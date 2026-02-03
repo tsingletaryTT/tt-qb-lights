@@ -1,9 +1,7 @@
 // Tenstorrent RGB Lighting Controller
 // Monitors Tenstorrent hardware temperature/power and controls RGB lighting via OpenRGB
 
-mod config;
-mod monitoring;
-mod rgb;
+use tt_qb_lights::{config, monitoring, rgb};
 
 use anyhow::{Context, Result};
 use clap::Parser;

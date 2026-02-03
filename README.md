@@ -2,6 +2,70 @@
 
 A Rust-based systemd service that monitors Tenstorrent hardware metrics (temperature, power) and dynamically controls RGB lighting via OpenRGB. The lights change color based on real-time hardware status - cool teal when idle, transitioning through purple to red as temperatures rise.
 
+## QuietBox Quick Start
+
+For Ubuntu 24.04 systems with Tenstorrent hardware, you can use the automated installer or install manually.
+
+### Option 1: Automated Installer (Recommended)
+
+The installer script checks for missing prerequisites and installs them:
+
+```bash
+cd /home/ttuser/code/tt-qb-lights
+./install.sh
+```
+
+The script will:
+- Check for Rust, OpenRGB, lm-sensors, and build tools
+- Ask permission before installing anything (especially Rust)
+- Run sensor detection to find Tenstorrent devices
+- Build the project automatically
+- Provide next steps for configuration
+
+### Option 2: Manual Installation
+
+If you prefer to install dependencies manually, run these commands:
+
+```bash
+# Update package lists
+sudo apt update
+
+# Install Rust toolchain
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+
+# Install OpenRGB (from official repository)
+sudo apt install -y openrgb
+
+# Install lm-sensors for hardware monitoring
+sudo apt install -y lm-sensors
+
+# Install build dependencies
+sudo apt install -y build-essential pkg-config
+
+# Detect sensors (will scan for Tenstorrent devices)
+sudo sensors-detect --auto
+
+# Verify Tenstorrent devices are detected
+sensors | grep -i blackhole
+```
+
+**What you should see:**
+```
+blackhole-pci-0200
+Adapter: PCI adapter
+asic_temp:    +42.0°C
+```
+
+If you don't see Tenstorrent devices, ensure drivers are loaded:
+```bash
+# Check if Tenstorrent kernel modules are loaded
+lsmod | grep tenstorrent
+
+# If needed, reload drivers
+sudo tt-cold-reboot
+```
+
 ## Features
 
 - **Passive Monitoring**: Reads temperature and power data directly from `/sys/class/hwmon` (lm-sensors interface)
@@ -52,6 +116,10 @@ A Rust-based systemd service that monitors Tenstorrent hardware metrics (tempera
 - Tenstorrent drivers loaded (creates `/sys/class/hwmon/blackhole-pci-*` entries)
 
 ## Installation
+
+**Quick Install**: Run `./install.sh` to automatically check and install prerequisites, then build the project. See [QuietBox Quick Start](#quietbox-quick-start) for details.
+
+**Manual Installation**: Follow the steps below if you prefer manual control.
 
 ### 1. Build the Project
 
@@ -152,30 +220,126 @@ journalctl -u tt-qb-lights -f
 
 ### Color Schemes
 
-Two built-in color schemes are available:
+Six built-in color schemes are available:
 
-**Teal → Purple → Red** (default, cool elegant theme):
-- 20°C: Deep Teal `#008B8B`
-- 30°C: Bright Cyan `#00CED1`
-- 40°C: Purple `#8B00FF`
-- 50°C: Magenta `#FF00FF`
-- 60°C: Hot Pink `#FF0066`
-- 70°C+: Red `#FF0000`
+**QuietBox Sunset** (default, inspired by QuietBox wallpaper):
+- Cool morning → Sunset → Night heat
+- 20°C: Sky Teal → 35°C: Bright Cyan → 50°C: Coral → 60°C: Salmon → 70°C+: Deep Red
+
+**Teal → Purple → Red** (cool elegant theme):
+- 20°C: Deep Teal → 30°C: Bright Cyan → 40°C: Purple → 50°C: Magenta → 60°C: Hot Pink → 70°C+: Red
 
 **Seafoam → Yellow → Orange** (natural warm theme):
-- 20°C: Seafoam `#20B2AA`
-- 30°C: Lime Green `#32CD32`
-- 40°C: Yellow-Green `#9ACD32`
-- 50°C: Gold `#FFD700`
-- 60°C: Orange `#FF8C00`
-- 70°C+: Red-Orange `#FF4500`
+- 20°C: Seafoam → 30°C: Lime Green → 40°C: Yellow-Green → 50°C: Gold → 60°C: Orange → 70°C+: Red-Orange
 
-Switch schemes by changing `scheme = "seafoam_yellow_orange"` in `config.toml`.
+**TT Dark** (inspired by Tenstorrent dark theme):
+- Teal → Pink → Gold → Red
+- 20°C: Teal → 35°C: Light Teal → 50°C: Pink → 60°C: Gold → 70°C+: Red
+
+**TT Light** (inspired by Tenstorrent light theme):
+- Blue → Purple → Copper → Red
+- 20°C: Bright Blue → 35°C: Blue → 50°C: Purple → 60°C: Copper → 70°C+: Red
+
+**Tenstorrent Branding** (official TT colors):
+- TT Teal → Blue → Magenta → Orange → Red
+- 20°C: TT Teal → 35°C: TT Blue → 50°C: Magenta → 60°C: Orange → 70°C+: Red
+
+Switch schemes by changing `scheme = "scheme_name"` in `config.toml` (e.g., `scheme = "tt_dark"`).
 
 ### Effects
 
 - **Power Brightness**: Brightness scales with power consumption (30% idle → 100% full load)
 - **Warning Pulse**: Lights pulse when temperature exceeds threshold (default 70°C)
+
+## Customization
+
+### Adjusting Color Sensitivity
+
+The color scheme determines which colors appear at which temperatures. To make the lights change faster (more sensitive):
+
+**Option 1: Choose a more sensitive color scheme**
+
+Some schemes have tighter temperature ranges (colors change faster):
+- `teal_purple_red` - Moderate, 6 steps across 20-70°C range
+- `quietbox_sunset` - Tight range, more reactive (20-70°C, 5 steps)
+- `tt_dark` - Moderate (20-70°C, 5 steps)
+
+**Option 2: Adjust temperature thresholds**
+
+Edit the temperature values in your active scheme in `config.toml`:
+
+```toml
+# Make colors change more quickly (compress temperature range)
+[[color_mapping.schemes.custom]]
+temp = 30  # Instead of 20 - start transitions later
+color = "#4DB8A5"
+
+[[color_mapping.schemes.custom]]
+temp = 55  # Instead of 70 - reach red earlier
+color = "#C23B3B"
+```
+
+### Adjusting Brightness Sensitivity
+
+Control how much the lights dim when idle:
+
+```toml
+[effects]
+# More dramatic: lights very dim when idle, bright under load
+min_brightness = 0.1  # 10% brightness when idle
+max_brightness = 1.0  # 100% brightness under load
+
+# More subtle: lights always fairly bright
+min_brightness = 0.6  # 60% brightness when idle
+max_brightness = 1.0  # 100% brightness under load
+
+# Constant brightness (disable power scaling)
+enable_power_brightness = false
+```
+
+### Adjusting Warning Threshold
+
+Control when the pulsing warning effect triggers:
+
+```toml
+[effects]
+# More conservative (warn earlier)
+warning_temp_threshold = 60  # Pulse at 60°C
+
+# More relaxed (warn later)
+warning_temp_threshold = 75  # Pulse at 75°C
+
+# Disable warning pulse entirely
+enable_warning_pulse = false
+```
+
+### Creating Custom Color Schemes
+
+Add your own color scheme to `config.toml`:
+
+```toml
+# Your custom scheme
+[[color_mapping.schemes.my_custom_scheme]]
+temp = 25
+color = "#YOUR_HEX_COLOR"
+
+[[color_mapping.schemes.my_custom_scheme]]
+temp = 45
+color = "#YOUR_HEX_COLOR"
+
+[[color_mapping.schemes.my_custom_scheme]]
+temp = 65
+color = "#YOUR_HEX_COLOR"
+
+[color_mapping]
+scheme = "my_custom_scheme"  # Activate your scheme
+```
+
+**Tips:**
+- Use at least 3-4 temperature points for smooth gradients
+- Ensure temperatures are in ascending order
+- Colors are interpolated linearly between points
+- Use [coolors.co](https://coolors.co) for palette inspiration
 
 ## Usage
 

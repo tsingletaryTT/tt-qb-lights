@@ -35,9 +35,10 @@ zone_strategy = "unified"
 
 [color_mapping]
 # Active color scheme name
-# Built-in schemes: "teal_purple_red", "seafoam_yellow_orange"
+# Built-in schemes: "quietbox_sunset", "teal_purple_red", "seafoam_yellow_orange",
+#                   "tt_dark", "tt_light", "tenstorrent_branding"
 # You can define custom schemes below
-scheme = "teal_purple_red"
+scheme = "quietbox_sunset"
 
 # Temperature thresholds define the color gradient
 # Colors are linearly interpolated between these temperature points
@@ -93,6 +94,94 @@ color = "#FF0000"  # Bright Red
 # [[color_mapping.schemes.seafoam_yellow_orange]]
 # temp = 70
 # color = "#FF4500"  # Red-Orange
+
+# SCHEME: QuietBox Sunset (Inspired by QuietBox wallpaper)
+# Cool morning → Sunset → Night heat
+[[color_mapping.schemes.quietbox_sunset]]
+temp = 20
+color = "#4DB8A5"  # Sky Teal (cool idle)
+
+[[color_mapping.schemes.quietbox_sunset]]
+temp = 35
+color = "#6FD8D5"  # Bright Cyan (warming up)
+
+[[color_mapping.schemes.quietbox_sunset]]
+temp = 50
+color = "#E88B8B"  # Coral (moderate load)
+
+[[color_mapping.schemes.quietbox_sunset]]
+temp = 60
+color = "#F5A4A4"  # Salmon (high load)
+
+[[color_mapping.schemes.quietbox_sunset]]
+temp = 70
+color = "#C23B3B"  # Deep Red (critical)
+
+# SCHEME: TT Dark (Inspired by Tenstorrent dark theme)
+# Teal → Pink → Gold → Red
+# [[color_mapping.schemes.tt_dark]]
+# temp = 20
+# color = "#4FD1C5"  # Teal (cool)
+#
+# [[color_mapping.schemes.tt_dark]]
+# temp = 35
+# color = "#81E6D9"  # Light Teal (mild)
+#
+# [[color_mapping.schemes.tt_dark]]
+# temp = 50
+# color = "#EC96B8"  # Pink (warming)
+#
+# [[color_mapping.schemes.tt_dark]]
+# temp = 60
+# color = "#F4C471"  # Gold (hot)
+#
+# [[color_mapping.schemes.tt_dark]]
+# temp = 70
+# color = "#FF6B6B"  # Red (critical)
+
+# SCHEME: TT Light (Inspired by Tenstorrent light theme)
+# Blue → Purple → Copper → Red
+# [[color_mapping.schemes.tt_light]]
+# temp = 20
+# color = "#3fb7de"  # Bright Blue (cool)
+#
+# [[color_mapping.schemes.tt_light]]
+# temp = 35
+# color = "#3293b2"  # Blue (mild)
+#
+# [[color_mapping.schemes.tt_light]]
+# temp = 50
+# color = "#5347a4"  # Purple (warming)
+#
+# [[color_mapping.schemes.tt_light]]
+# temp = 60
+# color = "#82672b"  # Copper (hot)
+#
+# [[color_mapping.schemes.tt_light]]
+# temp = 70
+# color = "#d03a1b"  # Red (critical)
+
+# SCHEME: Tenstorrent Branding (Official TT colors)
+# TT Teal → Blue → Magenta → Orange → Red
+# [[color_mapping.schemes.tenstorrent_branding]]
+# temp = 20
+# color = "#4FD1C5"  # TT Teal (signature color)
+#
+# [[color_mapping.schemes.tenstorrent_branding]]
+# temp = 35
+# color = "#3293b2"  # TT Blue (primary)
+#
+# [[color_mapping.schemes.tenstorrent_branding]]
+# temp = 50
+# color = "#EC96B8"  # Pink/Magenta (accent)
+#
+# [[color_mapping.schemes.tenstorrent_branding]]
+# temp = 60
+# color = "#ffb71b"  # Orange (warning)
+#
+# [[color_mapping.schemes.tenstorrent_branding]]
+# temp = 70
+# color = "#FF6B6B"  # Red (critical)
 
 [effects]
 # Scale brightness based on power consumption

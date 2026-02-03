@@ -202,10 +202,7 @@ impl Config {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_config_validation() {
-        // Build config programmatically instead of parsing TOML
-        // (TOML syntax for nested arrays is tricky)
+    fn create_valid_config() -> Config {
         let mut schemes = HashMap::new();
         schemes.insert(
             "test".to_string(),
@@ -221,10 +218,10 @@ mod tests {
             ],
         );
 
-        let config = Config {
+        Config {
             monitoring: MonitoringConfig {
                 poll_interval_ms: 1000,
-                source: MonitoringSource::TtSmi,
+                source: MonitoringSource::LmSensors,
             },
             openrgb: OpenRgbConfig {
                 server_host: "127.0.0.1".to_string(),
@@ -245,8 +242,246 @@ mod tests {
                 pulse_speed_ms: 500,
             },
             logging: LoggingConfig::default(),
-        };
+        }
+    }
 
+    #[test]
+    fn test_config_validation() {
+        let config = create_valid_config();
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn test_config_invalid_min_brightness() {
+        let mut config = create_valid_config();
+
+        // Test below 0.0
+        config.effects.min_brightness = -0.1;
+        assert!(config.validate().is_err());
+
+        // Test above 1.0
+        config.effects.min_brightness = 1.5;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_invalid_max_brightness() {
+        let mut config = create_valid_config();
+
+        // Test below 0.0
+        config.effects.max_brightness = -0.1;
+        assert!(config.validate().is_err());
+
+        // Test above 1.0
+        config.effects.max_brightness = 1.5;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_min_greater_than_max() {
+        let mut config = create_valid_config();
+        config.effects.min_brightness = 0.8;
+        config.effects.max_brightness = 0.5;
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be greater than"));
+    }
+
+    #[test]
+    fn test_config_nonexistent_scheme() {
+        let mut config = create_valid_config();
+        config.color_mapping.scheme = "nonexistent".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_config_empty_scheme() {
+        let mut config = create_valid_config();
+        config.color_mapping.schemes.insert("empty".to_string(), vec![]);
+        config.color_mapping.scheme = "empty".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no thresholds"));
+    }
+
+    #[test]
+    fn test_config_unsorted_temperatures() {
+        let mut config = create_valid_config();
+        config.color_mapping.schemes.insert(
+            "unsorted".to_string(),
+            vec![
+                ColorThreshold { temp: 70.0, color: "#FF0000".to_string() },
+                ColorThreshold { temp: 20.0, color: "#00FF00".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "unsorted".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("ascending order"));
+    }
+
+    #[test]
+    fn test_config_duplicate_temperatures() {
+        let mut config = create_valid_config();
+        config.color_mapping.schemes.insert(
+            "duplicate".to_string(),
+            vec![
+                ColorThreshold { temp: 50.0, color: "#FF0000".to_string() },
+                ColorThreshold { temp: 50.0, color: "#00FF00".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "duplicate".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("ascending order"));
+    }
+
+    #[test]
+    fn test_config_invalid_hex_format_no_hash() {
+        let mut config = create_valid_config();
+        config.color_mapping.schemes.insert(
+            "nohash".to_string(),
+            vec![
+                ColorThreshold { temp: 20.0, color: "FF0000".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "nohash".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid color format"));
+    }
+
+    #[test]
+    fn test_config_invalid_hex_format_wrong_length() {
+        let mut config = create_valid_config();
+        config.color_mapping.schemes.insert(
+            "short".to_string(),
+            vec![
+                ColorThreshold { temp: 20.0, color: "#FF00".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "short".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid color format"));
+    }
+
+    #[test]
+    fn test_config_get_active_scheme() {
+        let config = create_valid_config();
+        let scheme = config.get_active_scheme();
+
+        assert_eq!(scheme.len(), 2);
+        assert_eq!(scheme[0].temp, 20.0);
+        assert_eq!(scheme[1].temp, 70.0);
+    }
+
+    #[test]
+    fn test_config_brightness_boundary_values() {
+        let mut config = create_valid_config();
+
+        // Test exactly 0.0 and 1.0 are valid
+        config.effects.min_brightness = 0.0;
+        config.effects.max_brightness = 1.0;
+        assert!(config.validate().is_ok());
+
+        // Test min = max is valid
+        config.effects.min_brightness = 0.5;
+        config.effects.max_brightness = 0.5;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_zone_strategies() {
+        let mut config = create_valid_config();
+
+        config.openrgb.zone_strategy = ZoneStrategy::Unified;
+        assert!(config.validate().is_ok());
+
+        config.openrgb.zone_strategy = ZoneStrategy::PerDevice;
+        assert!(config.validate().is_ok());
+
+        config.openrgb.zone_strategy = ZoneStrategy::Gradient;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_monitoring_sources() {
+        let mut config = create_valid_config();
+
+        config.monitoring.source = MonitoringSource::LmSensors;
+        assert!(config.validate().is_ok());
+
+        config.monitoring.source = MonitoringSource::TtSmi;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_quietbox_sunset_scheme_validation() {
+        let mut config = create_valid_config();
+
+        // Add the quietbox_sunset scheme
+        config.color_mapping.schemes.insert(
+            "quietbox_sunset".to_string(),
+            vec![
+                ColorThreshold { temp: 20.0, color: "#4DB8A5".to_string() },
+                ColorThreshold { temp: 35.0, color: "#6FD8D5".to_string() },
+                ColorThreshold { temp: 50.0, color: "#E88B8B".to_string() },
+                ColorThreshold { temp: 60.0, color: "#F5A4A4".to_string() },
+                ColorThreshold { temp: 70.0, color: "#C23B3B".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "quietbox_sunset".to_string();
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_tt_dark_scheme_validation() {
+        let mut config = create_valid_config();
+
+        // Add the tt_dark scheme
+        config.color_mapping.schemes.insert(
+            "tt_dark".to_string(),
+            vec![
+                ColorThreshold { temp: 20.0, color: "#4FD1C5".to_string() },
+                ColorThreshold { temp: 35.0, color: "#81E6D9".to_string() },
+                ColorThreshold { temp: 50.0, color: "#EC96B8".to_string() },
+                ColorThreshold { temp: 60.0, color: "#F4C471".to_string() },
+                ColorThreshold { temp: 70.0, color: "#FF6B6B".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "tt_dark".to_string();
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_tt_light_scheme_validation() {
+        let mut config = create_valid_config();
+
+        // Add the tt_light scheme
+        config.color_mapping.schemes.insert(
+            "tt_light".to_string(),
+            vec![
+                ColorThreshold { temp: 20.0, color: "#3fb7de".to_string() },
+                ColorThreshold { temp: 35.0, color: "#3293b2".to_string() },
+                ColorThreshold { temp: 50.0, color: "#5347a4".to_string() },
+                ColorThreshold { temp: 60.0, color: "#82672b".to_string() },
+                ColorThreshold { temp: 70.0, color: "#d03a1b".to_string() },
+            ],
+        );
+        config.color_mapping.scheme = "tt_light".to_string();
+
+        assert!(config.validate().is_ok());
     }
 }

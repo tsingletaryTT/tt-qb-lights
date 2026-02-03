@@ -204,7 +204,7 @@ fn parse_tenstorrent_device_name(name: &str) -> Option<(String, String)> {
         // Convert short bus ID (e.g., "0100") to full PCI format (e.g., "0000:01:00.0")
         if short_bus_id.len() == 4 {
             format!(
-                "0000:{}{}:00.0",
+                "0000:{}:{}.0",
                 &short_bus_id[0..2],
                 &short_bus_id[2..4]
             )
