@@ -1,0 +1,122 @@
+# Tenstorrent RGB Lighting Controller Configuration
+# This file controls how your Tenstorrent hardware temperatures/power
+# map to RGB lighting effects via OpenRGB
+
+[monitoring]
+# How often to poll hardware metrics (in milliseconds)
+# Note: Each RGB update takes ~1.2s via CLI, so use at least 2000ms
+poll_interval_ms = 3000
+
+# Data source for monitoring:
+# - "lm-sensors": Read from /sys/class/hwmon directly (recommended, passive)
+# - "tt-smi": Use tt-smi -s JSON output (alternative, more active polling)
+source = "lm-sensors"
+
+# Supported Tenstorrent architectures:
+# - grayskull (earliest generation)
+# - wormhole_b0 (second generation)
+# - blackhole (current P150/P300C generation)
+# All architectures are monitored by default
+
+[openrgb]
+# OpenRGB server connection settings
+server_host = "127.0.0.1"
+server_port = 6742
+
+# RGB device name (as shown in OpenRGB)
+# Run "openrgb --list-devices" to see available devices
+device_name = "ASRock B850M-C"
+
+# Lighting zone strategy:
+# - "unified": All RGB zones show the hottest device temperature
+# - "per_device": Each RGB zone represents one Tenstorrent device (if enough zones)
+# - "gradient": Smooth gradient across all LEDs from coolest to hottest
+zone_strategy = "unified"
+
+[color_mapping]
+# Active color scheme name
+# Built-in schemes: "teal_purple_red", "seafoam_yellow_orange"
+# You can define custom schemes below
+scheme = "teal_purple_red"
+
+# Temperature thresholds define the color gradient
+# Colors are linearly interpolated between these temperature points
+
+# SCHEME: Teal → Purple → Red (Cool elegant to hot warning)
+# Uncomment to use:
+[[color_mapping.schemes.teal_purple_red]]
+temp = 20
+color = "#008B8B"  # Deep Teal
+
+[[color_mapping.schemes.teal_purple_red]]
+temp = 30
+color = "#00CED1"  # Bright Teal/Cyan
+
+[[color_mapping.schemes.teal_purple_red]]
+temp = 40
+color = "#8B00FF"  # Purple/Violet
+
+[[color_mapping.schemes.teal_purple_red]]
+temp = 50
+color = "#FF00FF"  # Magenta
+
+[[color_mapping.schemes.teal_purple_red]]
+temp = 60
+color = "#FF0066"  # Hot Pink
+
+[[color_mapping.schemes.teal_purple_red]]
+temp = 70
+color = "#FF0000"  # Bright Red
+
+# SCHEME: Seafoam → Yellow → Orange (Natural warm tones)
+# Uncomment to use:
+# [[color_mapping.schemes.seafoam_yellow_orange]]
+# temp = 20
+# color = "#20B2AA"  # Seafoam
+#
+# [[color_mapping.schemes.seafoam_yellow_orange]]
+# temp = 30
+# color = "#32CD32"  # Lime Green
+#
+# [[color_mapping.schemes.seafoam_yellow_orange]]
+# temp = 40
+# color = "#9ACD32"  # Yellow-Green
+#
+# [[color_mapping.schemes.seafoam_yellow_orange]]
+# temp = 50
+# color = "#FFD700"  # Gold
+#
+# [[color_mapping.schemes.seafoam_yellow_orange]]
+# temp = 60
+# color = "#FF8C00"  # Orange
+#
+# [[color_mapping.schemes.seafoam_yellow_orange]]
+# temp = 70
+# color = "#FF4500"  # Red-Orange
+
+[effects]
+# Scale brightness based on power consumption
+# Lower power = dimmer, higher power = brighter
+enable_power_brightness = true
+
+# Minimum brightness when idle (0.0 to 1.0)
+min_brightness = 0.3
+
+# Maximum brightness under load (0.0 to 1.0)
+max_brightness = 1.0
+
+# Enable pulsing effect when temperature exceeds threshold
+enable_warning_pulse = true
+
+# Temperature threshold for warning pulse (Celsius)
+warning_temp_threshold = 70
+
+# Pulsing speed in milliseconds (lower = faster pulse)
+pulse_speed_ms = 500
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Log to file (optional, comment out to disable)
+# log_file = "/var/log/tt-qb-lights.log"

@@ -1,0 +1,52 @@
+[Unit]
+Description=Tenstorrent RGB Lighting Controller
+Documentation=file:///home/ttuser/code/tt-qb-lights/README.md
+After=network.target multi-user.target
+# Wait for OpenRGB if it's also a systemd service
+# Wants=openrgb.service
+# After=openrgb.service
+
+[Service]
+Type=simple
+User=ttuser
+Group=ttuser
+WorkingDirectory=/home/ttuser/code/tt-qb-lights
+
+# Start OpenRGB server in background if not already running
+# ExecStartPre=/usr/bin/bash -c 'pgrep -x openrgb || /usr/bin/openrgb --server --profile default &'
+
+# Main service executable
+ExecStart=/home/ttuser/code/tt-qb-lights/target/release/tt-qb-lights --config /home/ttuser/code/tt-qb-lights/config.toml
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Resource limits (keep it lightweight)
+Nice=10
+CPUQuota=10%
+MemoryMax=100M
+
+# Environment
+Environment="RUST_LOG=info"
+Environment="RUST_BACKTRACE=1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tt-qb-lights
+
+# Security hardening
+# Note: Some of these may need adjustment depending on your system
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ttuser/code/tt-qb-lights
+
+# Allow access to hardware sensors
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/tcp rw
+
+[Install]
+WantedBy=multi-user.target
