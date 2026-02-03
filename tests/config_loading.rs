@@ -2,11 +2,18 @@
 // Tests loading and validating the actual config.toml file
 
 use tt_qb_lights::{Config, config::MonitoringSource, config::ZoneStrategy};
+use std::path::PathBuf;
+
+/// Helper to get project config.toml path for testing
+fn get_test_config_path() -> PathBuf {
+    // In tests, we use the project's config.toml as the reference
+    PathBuf::from("config.toml")
+}
 
 #[test]
 fn test_load_default_config() {
     // Load the actual config.toml from the project root
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify it loaded successfully
@@ -16,7 +23,7 @@ fn test_load_default_config() {
 
 #[test]
 fn test_default_config_has_quietbox_sunset_scheme() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify the default scheme is quietbox_sunset
@@ -25,7 +32,7 @@ fn test_default_config_has_quietbox_sunset_scheme() {
 
 #[test]
 fn test_default_config_has_all_schemes() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify all expected schemes are present
@@ -43,7 +50,7 @@ fn test_default_config_has_all_schemes() {
 
 #[test]
 fn test_default_config_brightness_settings() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify brightness settings are reasonable
@@ -56,7 +63,7 @@ fn test_default_config_brightness_settings() {
 
 #[test]
 fn test_default_config_warning_threshold() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify warning threshold is reasonable (typically 60-75°C)
@@ -66,7 +73,7 @@ fn test_default_config_warning_threshold() {
 
 #[test]
 fn test_default_config_openrgb_settings() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify OpenRGB settings
@@ -78,7 +85,7 @@ fn test_default_config_openrgb_settings() {
 
 #[test]
 fn test_quietbox_sunset_scheme_structure() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -102,7 +109,7 @@ fn test_quietbox_sunset_scheme_structure() {
 #[test]
 fn test_config_validation_passes() {
     // This tests that the actual config.toml passes all validation rules
-    let result = Config::from_file("config.toml");
+    let result = Config::from_file(get_test_config_path());
 
     assert!(
         result.is_ok(),
@@ -113,7 +120,7 @@ fn test_config_validation_passes() {
 
 #[test]
 fn test_config_effects_enabled() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Verify effects are configured
@@ -124,7 +131,7 @@ fn test_config_effects_enabled() {
 
 #[test]
 fn test_all_scheme_colors_valid_hex() {
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(get_test_config_path())
         .expect("Failed to load config.toml");
 
     // Test all schemes in the config have valid hex colors

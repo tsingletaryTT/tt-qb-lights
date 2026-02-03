@@ -291,7 +291,27 @@ echo -e "${GREEN}✓ Build successful!${NC}"
 # Test hardware detection
 echo ""
 echo -e "${BLUE}Testing hardware detection...${NC}"
-./target/release/tt-qb-lights --single-shot
+./target/release/tt-qb-lights --single-shot --config config.toml
+
+# Initialize user configuration
+echo ""
+echo -e "${BLUE}Setting up configuration...${NC}"
+
+CONFIG_DIR="$HOME/.config/tt-qb-lights"
+CONFIG_FILE="$CONFIG_DIR/config.toml"
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo -e "${YELLOW}Configuration already exists at: $CONFIG_FILE${NC}"
+    echo "Skipping config initialization (keeping your existing settings)"
+else
+    # Create config directory
+    mkdir -p "$CONFIG_DIR"
+
+    # Copy default config
+    cp config.toml "$CONFIG_FILE"
+
+    echo -e "${GREEN}✓ Created configuration at: $CONFIG_FILE${NC}"
+fi
 
 # Final summary
 echo ""
@@ -300,11 +320,12 @@ echo -e "${GREEN}Installation Complete!${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 echo "Binary location: ./target/release/tt-qb-lights"
+echo "Config location: $CONFIG_FILE"
 echo ""
 echo "Next steps:"
 echo ""
-echo "  1. Configure your RGB device name in config.toml:"
-echo "     nano config.toml"
+echo "  1. Configure your RGB device name:"
+echo "     nano $CONFIG_FILE"
 echo ""
 echo "  2. Start OpenRGB with SDK server enabled:"
 echo "     openrgb --server"
@@ -315,7 +336,11 @@ echo ""
 echo "  4. Test with RGB control:"
 echo "     ./target/release/tt-qb-lights"
 echo ""
-echo "  5. Install as systemd service:"
+echo "  5. Change color schemes anytime by editing:"
+echo "     nano $CONFIG_FILE"
+echo "     (no need to rebuild or restart - just edit and restart the service)"
+echo ""
+echo "  6. Install as systemd service:"
 echo "     sudo ./install.sh --service-only"
 echo "     sudo systemctl enable tt-qb-lights"
 echo "     sudo systemctl start tt-qb-lights"

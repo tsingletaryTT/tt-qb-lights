@@ -27,9 +27,13 @@ use tracing::{error, info, warn};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Path to configuration file
-    #[arg(short, long, default_value = "config.toml")]
-    config: PathBuf,
+    /// Path to configuration file (if not specified, searches standard locations)
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
+    /// Initialize default configuration file at ~/.config/tt-qb-lights/config.toml
+    #[arg(long)]
+    init: bool,
 
     /// Enable debug logging
     #[arg(short, long)]
@@ -48,16 +52,35 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Handle --init flag
+    if args.init {
+        let config_path = config::Config::init_default_config()?;
+        println!("Created default configuration at: {}", config_path.display());
+        println!("\nEdit this file to customize your RGB lighting settings.");
+        println!("Then run: tt-qb-lights");
+        return Ok(());
+    }
+
     // Initialize logging
     init_logging(&args)?;
 
     info!("Starting Tenstorrent RGB Lighting Controller");
 
     // Load configuration
-    let config = config::Config::from_file(&args.config)
-        .with_context(|| format!("Failed to load config from {}", args.config.display()))?;
+    let config = config::Config::load(args.config.as_deref())
+        .with_context(|| {
+            if let Some(ref path) = args.config {
+                format!("Failed to load config from {}", path.display())
+            } else {
+                "Failed to load config from standard locations".to_string()
+            }
+        })?;
 
-    info!("Loaded configuration from {}", args.config.display());
+    if let Some(ref path) = args.config {
+        info!("Loaded configuration from {}", path.display());
+    } else {
+        info!("Loaded configuration from standard location");
+    }
     info!(
         "Monitoring source: {:?}, poll interval: {}ms",
         config.monitoring.source, config.monitoring.poll_interval_ms

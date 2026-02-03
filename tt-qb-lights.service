@@ -15,8 +15,8 @@ WorkingDirectory=/home/ttuser/code/tt-qb-lights
 # Start OpenRGB server in background if not already running
 # ExecStartPre=/usr/bin/bash -c 'pgrep -x openrgb || /usr/bin/openrgb --server --profile default &'
 
-# Main service executable
-ExecStart=/home/ttuser/code/tt-qb-lights/target/release/tt-qb-lights --config /home/ttuser/code/tt-qb-lights/config.toml
+# Main service executable (uses ~/.config/tt-qb-lights/config.toml by default)
+ExecStart=/home/ttuser/code/tt-qb-lights/target/release/tt-qb-lights
 
 # Restart policy
 Restart=on-failure

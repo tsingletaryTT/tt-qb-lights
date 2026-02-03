@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Main configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -128,6 +128,88 @@ impl Default for LoggingConfig {
 }
 
 impl Config {
+    /// Find and load configuration file from standard locations
+    ///
+    /// Search order:
+    /// 1. Explicit path if provided (not empty)
+    /// 2. ~/.config/tt-qb-lights/config.toml (XDG standard)
+    /// 3. ~/.tt-qb-lights.toml (simple dotfile)
+    /// 4. ./config.toml (current directory, for development)
+    pub fn load(explicit_path: Option<&Path>) -> Result<Self> {
+        let config_path = if let Some(path) = explicit_path {
+            if path.as_os_str().is_empty() {
+                Self::find_config_file()?
+            } else {
+                path.to_path_buf()
+            }
+        } else {
+            Self::find_config_file()?
+        };
+
+        Self::from_file(&config_path)
+    }
+
+    /// Find configuration file in standard locations
+    fn find_config_file() -> Result<PathBuf> {
+        let candidates = vec![
+            // XDG config directory (preferred)
+            dirs::config_dir().map(|d| d.join("tt-qb-lights").join("config.toml")),
+            // Simple dotfile in home
+            dirs::home_dir().map(|d| d.join(".tt-qb-lights.toml")),
+            // Current directory (development fallback)
+            Some(PathBuf::from("config.toml")),
+        ];
+
+        for candidate in candidates.into_iter().flatten() {
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+
+        anyhow::bail!(
+            "Configuration file not found. Searched:\n\
+             - ~/.config/tt-qb-lights/config.toml\n\
+             - ~/.tt-qb-lights.toml\n\
+             - ./config.toml\n\
+             \n\
+             Run 'tt-qb-lights --init' to create a default configuration."
+        )
+    }
+
+    /// Get the default config file path (XDG standard location)
+    pub fn default_path() -> Result<PathBuf> {
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+        Ok(config_dir.join("tt-qb-lights").join("config.toml"))
+    }
+
+    /// Initialize default configuration file
+    pub fn init_default_config() -> Result<PathBuf> {
+        let config_path = Self::default_path()?;
+        let config_dir = config_path.parent()
+            .ok_or_else(|| anyhow::anyhow!("Invalid config path"))?;
+
+        // Create config directory if it doesn't exist
+        fs::create_dir_all(config_dir)
+            .with_context(|| format!("Failed to create config directory: {}", config_dir.display()))?;
+
+        // Check if config already exists
+        if config_path.exists() {
+            anyhow::bail!(
+                "Configuration file already exists at: {}\n\
+                 To reconfigure, either delete this file or edit it manually.",
+                config_path.display()
+            );
+        }
+
+        // Copy default config from project directory or use embedded default
+        let default_config = include_str!("../config.toml");
+        fs::write(&config_path, default_config)
+            .with_context(|| format!("Failed to write config file: {}", config_path.display()))?;
+
+        Ok(config_path)
+    }
+
     /// Load configuration from a TOML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();

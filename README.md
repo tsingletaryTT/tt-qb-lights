@@ -117,7 +117,7 @@ sudo tt-cold-reboot
 
 ## Installation
 
-**Quick Install**: Run `./install.sh` to automatically check and install prerequisites, then build the project. See [QuietBox Quick Start](#quietbox-quick-start) for details.
+**Quick Install**: Run `./install.sh` to automatically check and install prerequisites, build the project, and set up your configuration. See [QuietBox Quick Start](#quietbox-quick-start) for details.
 
 **Manual Installation**: Follow the steps below if you prefer manual control.
 
@@ -148,18 +148,26 @@ openrgb --list-devices
 
 Note your device name (e.g., "ASRock B850M-C") for the configuration file.
 
-### 3. Edit Configuration
+### 3. Initialize and Edit Configuration
 
-Copy and edit `config.toml` to match your hardware:
+Create your personal configuration file:
 
 ```bash
-cp config.toml config.toml.bak
-nano config.toml
+# Initialize default config (creates ~/.config/tt-qb-lights/config.toml)
+./target/release/tt-qb-lights --init
+
+# Edit the configuration
+nano ~/.config/tt-qb-lights/config.toml
 ```
+
+**Configuration Location**: Config is stored in your home directory, not in the project folder. This means:
+- ✓ No need to rebuild after changing color schemes
+- ✓ Settings persist across updates
+- ✓ Each user can have their own config
 
 Key settings to review:
 - `[openrgb]` section: Set your RGB device name
-- `[color_mapping]` section: Choose color scheme or customize
+- `[color_mapping]` section: Choose color scheme (change anytime, just restart service)
 - `[effects]` section: Enable/disable power brightness and warning pulse
 
 ### 4. Test Manually
@@ -253,6 +261,18 @@ Switch schemes by changing `scheme = "scheme_name"` in `config.toml` (e.g., `sch
 
 ## Customization
 
+**Easy Live Updates**: Your configuration is stored in `~/.config/tt-qb-lights/config.toml`. Edit it anytime and restart the service - no need to rebuild!
+
+```bash
+# Edit your config
+nano ~/.config/tt-qb-lights/config.toml
+
+# Restart the service to apply changes
+sudo systemctl restart tt-qb-lights
+
+# Or if running manually, just stop and restart
+```
+
 ### Adjusting Color Sensitivity
 
 The color scheme determines which colors appear at which temperatures. To make the lights change faster (more sensitive):
@@ -266,7 +286,7 @@ Some schemes have tighter temperature ranges (colors change faster):
 
 **Option 2: Adjust temperature thresholds**
 
-Edit the temperature values in your active scheme in `config.toml`:
+Edit the temperature values in your active scheme in `~/.config/tt-qb-lights/config.toml`:
 
 ```toml
 # Make colors change more quickly (compress temperature range)

@@ -2,11 +2,12 @@
 // Tests realistic scenarios of temperature changes and color transitions
 
 use tt_qb_lights::{Config, ColorMapper};
+use std::path::PathBuf;
 
 #[test]
 fn test_idle_to_load_transition() {
     // Simulate a realistic temperature progression: idle → light load → heavy load
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -41,7 +42,7 @@ fn test_idle_to_load_transition() {
 #[test]
 fn test_temperature_spike_and_recovery() {
     // Simulate a temperature spike (inference burst) and recovery
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -105,7 +106,7 @@ fn test_temperature_spike_and_recovery() {
 #[test]
 fn test_extreme_temperature_clamping() {
     // Test behavior at unrealistic extreme temperatures
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -128,7 +129,7 @@ fn test_extreme_temperature_clamping() {
 #[test]
 fn test_warning_threshold_colors() {
     // Test that colors near the warning threshold are visually distinct
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -160,7 +161,7 @@ fn test_warning_threshold_colors() {
 #[test]
 fn test_typical_workload_scenarios() {
     // Test colors for typical Tenstorrent workload scenarios
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -202,7 +203,7 @@ fn test_typical_workload_scenarios() {
 #[test]
 fn test_color_mapping_with_brightness_scaling() {
     // Test that brightness scaling works correctly with color mapping
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -244,7 +245,7 @@ fn test_color_mapping_with_brightness_scaling() {
 #[test]
 fn test_multi_device_temperature_mapping() {
     // Simulate multiple Tenstorrent devices with different temperatures
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -291,7 +292,7 @@ fn test_multi_device_temperature_mapping() {
 #[test]
 fn test_temperature_hysteresis_simulation() {
     // Simulate temperature bouncing around a threshold
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();
@@ -325,7 +326,7 @@ fn test_temperature_hysteresis_simulation() {
 #[test]
 fn test_coldstart_to_steady_state() {
     // Simulate a cold start warmup to steady state
-    let config = Config::from_file("config.toml")
+    let config = Config::from_file(PathBuf::from("config.toml"))
         .expect("Failed to load config.toml");
 
     let scheme = config.get_active_scheme();

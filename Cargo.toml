@@ -28,6 +28,9 @@ thiserror = "1"
 # Color manipulation
 palette = "0.7"
 
+# Directory utilities
+dirs = "5"
+
 # OpenRGB client (we'll check if this exists, otherwise implement TCP client)
 # openrgb = { version = "0.2", optional = true }
 
