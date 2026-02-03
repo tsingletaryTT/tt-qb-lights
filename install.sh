@@ -23,14 +23,34 @@ if [ "$1" == "--service-only" ]; then
         exit 1
     fi
 
-    echo -e "${BLUE}Installing systemd service...${NC}"
+    echo -e "${BLUE}Installing systemd services...${NC}"
+    echo ""
+
+    # Check if OpenRGB service exists and enable it
+    if [ -f /etc/systemd/system/openrgb.service ]; then
+        echo "Enabling OpenRGB service..."
+        systemctl enable openrgb.service
+        if ! systemctl is-active openrgb.service >/dev/null 2>&1; then
+            systemctl start openrgb.service
+        fi
+        echo -e "${GREEN}✓ OpenRGB service enabled and started${NC}"
+    else
+        echo -e "${YELLOW}⚠ OpenRGB service not found at /etc/systemd/system/openrgb.service${NC}"
+        echo "  You'll need to start OpenRGB manually or create the service"
+    fi
+
+    echo ""
+    echo "Installing tt-qb-lights service..."
     cp tt-qb-lights.service /etc/systemd/system/
     systemctl daemon-reload
-    echo -e "${GREEN}✓ Service installed${NC}"
+    echo -e "${GREEN}✓ tt-qb-lights service installed${NC}"
     echo ""
     echo "To enable and start the service:"
     echo "  sudo systemctl enable tt-qb-lights"
     echo "  sudo systemctl start tt-qb-lights"
+    echo ""
+    echo "Service dependencies:"
+    echo "  tt-qb-lights requires OpenRGB to be running"
     exit 0
 fi
 
@@ -313,6 +333,51 @@ else
     echo -e "${GREEN}✓ Created configuration at: $CONFIG_FILE${NC}"
 fi
 
+# Setup OpenRGB service
+echo ""
+echo -e "${BLUE}Checking OpenRGB service...${NC}"
+
+if systemctl list-unit-files | grep -q openrgb.service; then
+    echo -e "${GREEN}✓ OpenRGB service found${NC}"
+
+    # Enable OpenRGB service
+    if ! systemctl is-enabled openrgb.service >/dev/null 2>&1; then
+        echo "Enabling OpenRGB service..."
+        sudo systemctl enable openrgb.service
+        echo -e "${GREEN}✓ OpenRGB service enabled${NC}"
+    else
+        echo -e "${GREEN}✓ OpenRGB service already enabled${NC}"
+    fi
+
+    # Start OpenRGB service if not running
+    if ! systemctl is-active openrgb.service >/dev/null 2>&1; then
+        echo "Starting OpenRGB service..."
+        sudo systemctl start openrgb.service
+        sleep 2
+
+        if systemctl is-active openrgb.service >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ OpenRGB service started${NC}"
+
+            # Check if server is listening
+            if netstat -tlnp 2>/dev/null | grep -q 6742 || ss -tlnp 2>/dev/null | grep -q 6742; then
+                echo -e "${GREEN}✓ OpenRGB server listening on port 6742${NC}"
+            fi
+        else
+            echo -e "${YELLOW}⚠ OpenRGB service failed to start${NC}"
+            echo "You may need to start it manually: sudo systemctl start openrgb"
+        fi
+    else
+        echo -e "${GREEN}✓ OpenRGB service already running${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ OpenRGB service not found${NC}"
+    echo ""
+    echo "To enable RGB control, you need to:"
+    echo "  1. Create OpenRGB service file (or start OpenRGB manually)"
+    echo "  2. Start OpenRGB with: openrgb --server"
+    echo ""
+fi
+
 # Final summary
 echo ""
 echo -e "${BLUE}========================================${NC}"
@@ -326,24 +391,27 @@ echo "Next steps:"
 echo ""
 echo "  1. Configure your RGB device name:"
 echo "     nano $CONFIG_FILE"
+echo "     (Update the 'device_name' in [openrgb] section)"
 echo ""
-echo "  2. Start OpenRGB with SDK server enabled:"
-echo "     openrgb --server"
-echo ""
-echo "  3. Test in dry-run mode (no RGB control):"
+echo "  2. Test in dry-run mode (no RGB control):"
 echo "     ./target/release/tt-qb-lights --dry-run --debug"
 echo ""
-echo "  4. Test with RGB control:"
+echo "  3. Test with RGB control:"
 echo "     ./target/release/tt-qb-lights"
+echo "     (OpenRGB server is already running)"
 echo ""
-echo "  5. Change color schemes anytime by editing:"
-echo "     nano $CONFIG_FILE"
-echo "     (no need to rebuild or restart - just edit and restart the service)"
-echo ""
-echo "  6. Install as systemd service:"
+echo "  4. Install as systemd service:"
 echo "     sudo ./install.sh --service-only"
 echo "     sudo systemctl enable tt-qb-lights"
 echo "     sudo systemctl start tt-qb-lights"
+echo ""
+echo "  5. Change color schemes anytime by editing:"
+echo "     nano $CONFIG_FILE"
+echo "     (Change 'scheme' value, then: sudo systemctl restart tt-qb-lights)"
+echo ""
+echo "Services:"
+echo "  • OpenRGB: $(systemctl is-active openrgb 2>/dev/null || echo 'not running')"
+echo "  • tt-qb-lights: $(systemctl is-active tt-qb-lights 2>/dev/null || echo 'not installed')"
 echo ""
 echo "See README.md for detailed documentation."
 echo ""

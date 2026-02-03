@@ -132,6 +132,18 @@ The binary will be created at `target/release/tt-qb-lights`.
 
 ### 2. Configure OpenRGB
 
+**Option A: Use systemd service (recommended)**
+
+The OpenRGB service starts automatically at boot:
+
+```bash
+sudo systemctl enable openrgb.service
+sudo systemctl start openrgb.service
+sudo systemctl status openrgb.service  # Verify it's running
+```
+
+**Option B: Manual start**
+
 Start OpenRGB with SDK server enabled:
 
 ```bash
@@ -140,13 +152,15 @@ openrgb --server
 
 Or enable it in the OpenRGB GUI: Settings → Enable SDK Server
 
-List available RGB devices:
+**Find your RGB device name:**
 
 ```bash
 openrgb --list-devices
 ```
 
 Note your device name (e.g., "ASRock B850M-C") for the configuration file.
+
+**Note**: The tt-qb-lights service automatically waits for OpenRGB to be ready before starting.
 
 ### 3. Initialize and Edit Configuration
 
@@ -198,24 +212,36 @@ Run in dry-run mode to test color mapping without controlling lights:
 
 ### 5. Install as systemd Service
 
-Copy the service file:
+**Easy way** (recommended):
 
 ```bash
-sudo cp tt-qb-lights.service /etc/systemd/system/
-sudo systemctl daemon-reload
-```
-
-Enable and start the service:
-
-```bash
+# Install both OpenRGB and tt-qb-lights services
+sudo ./install.sh --service-only
 sudo systemctl enable tt-qb-lights
 sudo systemctl start tt-qb-lights
 ```
 
+**Manual way**:
+
+```bash
+# Enable OpenRGB service (if not already enabled)
+sudo systemctl enable openrgb.service
+sudo systemctl start openrgb.service
+
+# Install tt-qb-lights service
+sudo cp tt-qb-lights.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable tt-qb-lights
+sudo systemctl start tt-qb-lights
+```
+
+**Service Dependencies**: tt-qb-lights requires OpenRGB to start first. The service file automatically handles this dependency.
+
 Check status:
 
 ```bash
-sudo systemctl status tt-qb-lights
+sudo systemctl status openrgb        # Should be running
+sudo systemctl status tt-qb-lights   # Should be running
 ```
 
 View logs:
