@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenRGB SDK Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openrgb --server
+Restart=on-failure
+RestartSec=5s
+
+# Allow time for server to start
+TimeoutStartSec=10
+
+# Resource limits
+Nice=10
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target
