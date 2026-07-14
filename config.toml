@@ -12,6 +12,35 @@ poll_interval_ms = 3000
 # - "tt-smi": Use tt-smi -s JSON output (alternative, more active polling)
 source = "lm-sensors"
 
+# --- Poll-path safety (added v0.2.0) ---
+# Background: on tt-quietbox, telemetry reads go through the driver's blocking
+# hwmon MMIO path, which can stall for seconds/minutes under compute load
+# (see ~/qb2-debug/report-2026-05-28 and report-2026-07-14). These knobs keep
+# tt-qb-lights from amplifying such a stall into a system-wide problem.
+
+# Max time (ms) the loop waits for one poll before treating it as slow and
+# holding last-good lights. The loop never blocks longer than this.
+read_timeout_ms = 750
+
+# When polls go slow/error/sentinel, the interval backs off geometrically by
+# this factor, up to the cap below — a self-triggered "pause during heavy runs".
+backoff_multiplier = 2.0
+max_poll_interval_ms = 60000
+
+# A reading at/above either threshold is treated as a fault sentinel (the
+# 65536 °C / 4294 W all-ones values seen when a chip's ARC-NOC path drops) and
+# never drives the LED color.
+sentinel_temp_c = 150.0
+sentinel_power_w = 1000.0
+
+# While a fault persists past this long, hold the last-good color but dim to
+# fault_brightness so a stuck-bright state is visually obvious.
+fault_dim_after_ms = 30000
+fault_brightness = 0.1
+
+# NOTE: These make tt-qb-lights resilient, but during heavy multi-chip runs the
+# safest choice is still to pause it entirely: `systemctl stop tt-qb-lights`.
+
 # Supported Tenstorrent architectures:
 # - grayskull (earliest generation)
 # - wormhole_b0 (second generation)
