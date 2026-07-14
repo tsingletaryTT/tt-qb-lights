@@ -31,8 +31,7 @@ Changes (source-agnostic — protects both the lm-sensors and tt-smi backends):
 - Docs: README "Safe polling on fragile hardware" section; `config.toml` knob docs
   + the belt-and-suspenders `systemctl stop tt-qb-lights` guidance for heavy runs.
 
-Design/plan docs: `docs/superpowers/specs/2026-07-14-harden-poll-path-design.md`,
-`docs/superpowers/plans/2026-07-14-harden-poll-path.md`.
+Design doc: `docs/design/2026-07-14-harden-poll-path.md`.
 
 **Prompting note:** original ask was "the latest report has recommendations for
 tt-qb-lights — implement them." Constraint given mid-task: **no TT hardware access**

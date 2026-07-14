@@ -160,7 +160,7 @@ async fn main() -> Result<()> {
     // Polling is hardened so tt-qb-lights can never amplify a chip fault into a
     // whole-box lockup: reads run off-thread with a timeout (AsyncPoller), can
     // never pile up, and the loop backs off / holds last-good on trouble
-    // (PollController). See docs/superpowers/specs/2026-07-14-harden-poll-path.md.
+    // (PollController). See docs/design/2026-07-14-harden-poll-path.md.
     let policy = PollPolicy {
         base_interval: Duration::from_millis(config.monitoring.poll_interval_ms),
         max_interval: Duration::from_millis(config.monitoring.max_poll_interval_ms),

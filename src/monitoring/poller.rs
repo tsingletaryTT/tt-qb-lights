@@ -5,8 +5,9 @@
 //! seconds/minutes under compute load, and once a chip's ARC-NOC path drops the
 //! readings collapse to all-ones sentinels. A naive poller that stalls on such a
 //! read — or piles up multiple blocked reads — was documented as an *amplifier*
-//! of the resulting whole-box lockup (see ~/qb2-debug reports 2026-05-28,
-//! 2026-07-12, 2026-07-14). This module makes that structurally impossible.
+//! of the resulting whole-box lockup. This module makes that structurally
+//! impossible; see `docs/design/2026-07-14-harden-poll-path.md` for the full
+//! rationale (which draws on the operator's off-repo hard-lock post-mortems).
 
 use crate::monitoring::{DeviceMetrics, HardwareMonitor};
 use crate::rgb::RgbColor;

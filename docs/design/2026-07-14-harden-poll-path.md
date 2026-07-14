@@ -34,20 +34,24 @@ recommendations #1, #2, #4–6, which are not tt-qb-lights changes.
 
 ### 1. Off-thread bounded poll — `src/monitoring/poller.rs`
 
-A single long-lived **worker thread** owns the `Box<dyn HardwareMonitor>` and services poll
-requests over channels. The async main loop requests a poll and waits for the result with a
-`read_timeout_ms` deadline.
+`AsyncPoller` runs `HardwareMonitor::poll_metrics` on a tokio blocking thread
+(`tokio::task::spawn_blocking`) and awaits it with a `read_timeout_ms` deadline
+(`tokio::time::timeout`). The blocking task holds an `Arc<dyn HardwareMonitor>`, so no telemetry
+work ever runs on the async main loop.
 
 **Single-outstanding-reader invariant:** the loop never issues a new poll while one is still in
-flight. Because a `read()` stuck in `D` state cannot be killed, a *persistent* worker guarantees
-**at most one** blocked read ever exists for this process. Spawning a fresh thread per poll would
-*be* the pile-up bug. When a stuck read eventually returns, the worker becomes available again and
-the loop resumes normal cadence.
+flight. Because a `read()` stuck in `D` state cannot be killed, reusing the in-flight task
+guarantees **at most one** blocked read ever exists for this process. Starting a fresh blocking
+task on every iteration *regardless of the previous one* would be the pile-up bug; guarding on the
+stored handle is what prevents it. When a stuck read eventually returns, the slot frees and the
+loop resumes normal cadence.
 
-Mechanism: request channel (capacity 1) + result channel. The loop tracks an `in_flight` flag; it
-sends a request only when `!in_flight`, then `select!`s the result receiver against a timeout. On
-timeout it leaves `in_flight = true` and proceeds without blocking; a later iteration drains a
-late-arriving result and clears the flag.
+Mechanism: `AsyncPoller` stores the outstanding read as `in_flight: Option<JoinHandle<…>>`. Each
+`poll_once` spawns a blocking task *only when* `in_flight` is `None`, then applies
+`tokio::time::timeout(read_timeout, &mut handle)` (`JoinHandle` is a `Unpin` future, so it can be
+polled by reference). On timeout the handle is left in place and the call returns `Timeout` without
+blocking; the next `poll_once` re-awaits that same handle instead of spawning a second read. When
+the handle resolves, the slot is cleared and the outcome classified (`Good` / `Error`).
 
 ### 2. Sentinel / implausible-value detection — `src/monitoring/mod.rs`
 
@@ -91,7 +95,7 @@ All new fields use `#[serde(default = ...)]`, so existing installed configs keep
 Loop decision logic is extracted into a pure `PollController` state machine (current interval,
 consecutive-trouble count, fault-start time, last-good color/brightness). It has **no** hardware,
 tokio, or clock dependencies — time is passed in — so it is unit-testable directly. `src/main.rs`
-becomes a thin driver: ask the controller what to do, drive the worker thread, apply the result.
+becomes a thin driver: ask the controller what to do, drive the `AsyncPoller`, apply the result.
 
 ## Testing
 

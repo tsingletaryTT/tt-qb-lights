@@ -310,12 +310,24 @@ impl Config {
             }
         }
 
-        // Validate poll-hardening knobs
-        if self.monitoring.backoff_multiplier < 1.0 {
-            anyhow::bail!("backoff_multiplier must be >= 1.0");
+        // Validate poll-hardening knobs. Reject non-finite floats explicitly:
+        // NaN makes every comparison below false, so it would slip through the
+        // range checks and later panic (e.g. `Duration::mul_f32` in the backoff
+        // path panics on a non-finite factor).
+        if !self.monitoring.backoff_multiplier.is_finite() || self.monitoring.backoff_multiplier < 1.0 {
+            anyhow::bail!("backoff_multiplier must be a finite value >= 1.0");
         }
-        if self.monitoring.fault_brightness < 0.0 || self.monitoring.fault_brightness > 1.0 {
-            anyhow::bail!("fault_brightness must be between 0.0 and 1.0");
+        if !self.monitoring.fault_brightness.is_finite()
+            || self.monitoring.fault_brightness < 0.0
+            || self.monitoring.fault_brightness > 1.0
+        {
+            anyhow::bail!("fault_brightness must be a finite value between 0.0 and 1.0");
+        }
+        if !self.monitoring.sentinel_temp_c.is_finite() {
+            anyhow::bail!("sentinel_temp_c must be a finite value");
+        }
+        if !self.monitoring.sentinel_power_w.is_finite() {
+            anyhow::bail!("sentinel_power_w must be a finite value");
         }
         if self.monitoring.max_poll_interval_ms < self.monitoring.poll_interval_ms {
             anyhow::bail!("max_poll_interval_ms must be >= poll_interval_ms");
@@ -441,6 +453,35 @@ pulse_speed_ms = 500
     fn test_invalid_fault_brightness_rejected() {
         let mut config = create_valid_config();
         config.monitoring.fault_brightness = 1.5;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_non_finite_backoff_multiplier_rejected() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut config = create_valid_config();
+            config.monitoring.backoff_multiplier = bad;
+            assert!(config.validate().is_err(), "backoff_multiplier {bad} should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_non_finite_fault_brightness_rejected() {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut config = create_valid_config();
+            config.monitoring.fault_brightness = bad;
+            assert!(config.validate().is_err(), "fault_brightness {bad} should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_non_finite_sentinels_rejected() {
+        let mut config = create_valid_config();
+        config.monitoring.sentinel_temp_c = f32::NAN;
+        assert!(config.validate().is_err());
+
+        let mut config = create_valid_config();
+        config.monitoring.sentinel_power_w = f32::INFINITY;
         assert!(config.validate().is_err());
     }
 
