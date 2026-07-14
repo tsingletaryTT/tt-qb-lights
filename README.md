@@ -471,6 +471,30 @@ Update `config.toml` with the exact device name shown.
 sudo usermod -a -G video $USER
 ```
 
+## Safe polling on fragile hardware
+
+tt-qb-lights only ever *reads* telemetry and writes RGB over OpenRGB — it never
+opens `/dev/tenstorrent` or resets a chip. But on some boxes the driver's hwmon
+telemetry path can block for seconds under compute load, and a naive poller that
+stalls or piles up reads can amplify a single-chip fault into a system-wide
+lockup (see the qb2-debug reports).
+
+To prevent that, polling is hardened as of v0.2.0:
+
+- **Off-thread, time-bounded polling.** Each poll runs on a background thread and
+  the main loop waits at most `read_timeout_ms`. A slow read never stalls the loop.
+- **Single outstanding reader.** A new poll is never started while a previous one
+  is still blocked, so at most one blocked read can ever exist for this process.
+- **Sentinel rejection.** All-ones fault telemetry (e.g. 65536 °C / 4294 W) is
+  detected and never drives the lights.
+- **Adaptive backoff.** Slow/failed/sentinel polls grow the interval up to
+  `max_poll_interval_ms`, automatically easing off a contended machine.
+- **Fault display.** On trouble the last valid color is held, then dimmed to
+  `fault_brightness` after `fault_dim_after_ms` so a degraded state is visible.
+
+During heavy multi-chip workloads, pausing the service entirely
+(`systemctl stop tt-qb-lights`) is still the most conservative option.
+
 ## Architecture Details
 
 ### Device Detection

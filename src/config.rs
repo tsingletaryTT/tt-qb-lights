@@ -26,7 +26,46 @@ pub struct MonitoringConfig {
 
     /// Data source: "tt-smi" or "lm-sensors"
     pub source: MonitoringSource,
+
+    /// How long the main loop waits for a single poll before treating it as
+    /// slow/blocked and proceeding (holding last-good). Guards against the
+    /// blocking-hwmon D-state stall (qb2-debug report-2026-05-28).
+    #[serde(default = "default_read_timeout_ms")]
+    pub read_timeout_ms: u64,
+
+    /// Upper bound on the (backed-off) poll interval.
+    #[serde(default = "default_max_poll_interval_ms")]
+    pub max_poll_interval_ms: u64,
+
+    /// Factor the poll interval grows by after each troubled poll.
+    #[serde(default = "default_backoff_multiplier")]
+    pub backoff_multiplier: f32,
+
+    /// ASIC temperature (°C) at or above which a reading is treated as a
+    /// sentinel/fault rather than a real measurement.
+    #[serde(default = "default_sentinel_temp_c")]
+    pub sentinel_temp_c: f32,
+
+    /// Power (W) at or above which a reading is treated as a sentinel/fault.
+    #[serde(default = "default_sentinel_power_w")]
+    pub sentinel_power_w: f32,
+
+    /// How long a fault must persist before the lights dim from last-good.
+    #[serde(default = "default_fault_dim_after_ms")]
+    pub fault_dim_after_ms: u64,
+
+    /// Brightness floor shown while a fault persists past `fault_dim_after_ms`.
+    #[serde(default = "default_fault_brightness")]
+    pub fault_brightness: f32,
 }
+
+fn default_read_timeout_ms() -> u64 { 750 }
+fn default_max_poll_interval_ms() -> u64 { 60000 }
+fn default_backoff_multiplier() -> f32 { 2.0 }
+fn default_sentinel_temp_c() -> f32 { 150.0 }
+fn default_sentinel_power_w() -> f32 { 1000.0 }
+fn default_fault_dim_after_ms() -> u64 { 30000 }
+fn default_fault_brightness() -> f32 { 0.1 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -271,6 +310,17 @@ impl Config {
             }
         }
 
+        // Validate poll-hardening knobs
+        if self.monitoring.backoff_multiplier < 1.0 {
+            anyhow::bail!("backoff_multiplier must be >= 1.0");
+        }
+        if self.monitoring.fault_brightness < 0.0 || self.monitoring.fault_brightness > 1.0 {
+            anyhow::bail!("fault_brightness must be between 0.0 and 1.0");
+        }
+        if self.monitoring.max_poll_interval_ms < self.monitoring.poll_interval_ms {
+            anyhow::bail!("max_poll_interval_ms must be >= poll_interval_ms");
+        }
+
         Ok(())
     }
 
@@ -304,6 +354,13 @@ mod tests {
             monitoring: MonitoringConfig {
                 poll_interval_ms: 1000,
                 source: MonitoringSource::LmSensors,
+                read_timeout_ms: 750,
+                max_poll_interval_ms: 60000,
+                backoff_multiplier: 2.0,
+                sentinel_temp_c: 150.0,
+                sentinel_power_w: 1000.0,
+                fault_dim_after_ms: 30000,
+                fault_brightness: 0.1,
             },
             openrgb: OpenRgbConfig {
                 server_host: "127.0.0.1".to_string(),
@@ -331,6 +388,68 @@ mod tests {
     fn test_config_validation() {
         let config = create_valid_config();
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn test_monitoring_defaults_apply_to_minimal_config() {
+        // A config.toml written before these knobs existed must still parse,
+        // filling defaults.
+        let toml = r##"
+[monitoring]
+poll_interval_ms = 3000
+source = "lm-sensors"
+
+[openrgb]
+server_host = "127.0.0.1"
+server_port = 6742
+device_name = "X"
+zone_strategy = "unified"
+
+[color_mapping]
+scheme = "s"
+[[color_mapping.schemes.s]]
+temp = 20
+color = "#00FF00"
+[[color_mapping.schemes.s]]
+temp = 70
+color = "#FF0000"
+
+[effects]
+enable_power_brightness = true
+enable_warning_pulse = true
+pulse_speed_ms = 500
+"##;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.monitoring.read_timeout_ms, 750);
+        assert_eq!(cfg.monitoring.max_poll_interval_ms, 60000);
+        assert_eq!(cfg.monitoring.backoff_multiplier, 2.0);
+        assert_eq!(cfg.monitoring.sentinel_temp_c, 150.0);
+        assert_eq!(cfg.monitoring.sentinel_power_w, 1000.0);
+        assert_eq!(cfg.monitoring.fault_dim_after_ms, 30000);
+        assert_eq!(cfg.monitoring.fault_brightness, 0.1);
+        cfg.validate().unwrap();
+    }
+
+    #[test]
+    fn test_invalid_backoff_multiplier_rejected() {
+        let mut config = create_valid_config();
+        config.monitoring.backoff_multiplier = 0.5; // must be >= 1.0
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_invalid_fault_brightness_rejected() {
+        let mut config = create_valid_config();
+        config.monitoring.fault_brightness = 1.5;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_max_interval_below_base_rejected() {
+        let mut config = create_valid_config();
+        config.monitoring.poll_interval_ms = 5000;
+        config.monitoring.max_poll_interval_ms = 1000;
+        assert!(config.validate().is_err());
     }
 
     #[test]

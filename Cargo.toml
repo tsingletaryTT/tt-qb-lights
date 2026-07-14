@@ -1,6 +1,6 @@
 [package]
 name = "tt-qb-lights"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Tenstorrent User"]
 description = "RGB lighting controller for Tenstorrent hardware based on temperature and power metrics"

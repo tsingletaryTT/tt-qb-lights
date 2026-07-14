@@ -1,6 +1,7 @@
 // Hardware monitoring module
 // Collects temperature, power, and utilization metrics from Tenstorrent devices
 
+pub mod poller;
 pub mod sensors;
 pub mod tenstorrent;
 
@@ -52,6 +53,60 @@ impl DeviceMetrics {
     /// Check if device is in warning state (overheating)
     pub fn is_overheating(&self, threshold: f32) -> bool {
         self.max_temp >= threshold
+    }
+
+    /// Returns `true` when this reading looks like a genuine measurement, `false`
+    /// when it matches a telemetry sentinel or is otherwise implausible.
+    ///
+    /// When a Blackhole chip's ARC-NOC path drops (see the qb2-debug reports),
+    /// hwmon telemetry collapses to all-ones sentinels — 65536 °C (0xFFFF) and
+    /// ~4294 W (u32::MAX microwatts). Feeding those into color mapping would drive
+    /// garbage output, so callers use this to hold last-good instead.
+    pub fn is_plausible(&self, sentinel_temp_c: f32, sentinel_power_w: f32) -> bool {
+        self.max_temp < sentinel_temp_c && self.power_watts < sentinel_power_w
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn metrics(max_temp: f32, power_watts: f32) -> DeviceMetrics {
+        DeviceMetrics {
+            bus_id: "0000:04:00.0".to_string(),
+            architecture: "blackhole".to_string(),
+            board_type: "p300c".to_string(),
+            asic_temp: max_temp,
+            power_watts,
+            tdp_watts: 300.0,
+            fan_rpm: 0,
+            gddr_temps: vec![],
+            max_temp,
+            power_utilization: 0.0,
+        }
+    }
+
+    #[test]
+    fn plausible_normal_reading_passes() {
+        assert!(metrics(47.0, 67.0).is_plausible(150.0, 1000.0));
+    }
+
+    #[test]
+    fn implausible_temp_sentinel_fails() {
+        // 65536 °C = 0xFFFF NOC sentinel observed in the 07-13 lockup
+        assert!(!metrics(65536.0, 67.0).is_plausible(150.0, 1000.0));
+    }
+
+    #[test]
+    fn implausible_power_sentinel_fails() {
+        // 4294 W = u32::MAX microwatts sentinel
+        assert!(!metrics(47.0, 4294.0).is_plausible(150.0, 1000.0));
+    }
+
+    #[test]
+    fn at_threshold_is_implausible() {
+        assert!(!metrics(150.0, 67.0).is_plausible(150.0, 1000.0));
+        assert!(!metrics(47.0, 1000.0).is_plausible(150.0, 1000.0));
     }
 }
 

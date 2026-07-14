@@ -17,9 +17,15 @@ macro_rules! warn_once {
         });
     }};
 }
-use monitoring::{sensors::SensorsMonitor, tenstorrent::TtSmiMonitor, HardwareMonitor};
+use monitoring::{
+    poller::{AsyncPoller, Display, PollController, PollOutcome, PollPolicy, PollResult},
+    sensors::SensorsMonitor,
+    tenstorrent::TtSmiMonitor,
+    HardwareMonitor,
+};
 use rgb::{color_mapping::ColorMapper, openrgb_cli::OpenRgbCliController, RgbController};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
@@ -87,12 +93,12 @@ async fn main() -> Result<()> {
     );
 
     // Initialize hardware monitor
-    let monitor: Box<dyn HardwareMonitor> = match config.monitoring.source {
+    let monitor: Arc<dyn HardwareMonitor> = match config.monitoring.source {
         config::MonitoringSource::TtSmi => {
-            Box::new(TtSmiMonitor::new().context("Failed to initialize tt-smi monitor")?)
+            Arc::new(TtSmiMonitor::new().context("Failed to initialize tt-smi monitor")?)
         }
         config::MonitoringSource::LmSensors => {
-            Box::new(SensorsMonitor::new().context("Failed to initialize sensors monitor")?)
+            Arc::new(SensorsMonitor::new().context("Failed to initialize sensors monitor")?)
         }
     };
 
@@ -149,136 +155,161 @@ async fn main() -> Result<()> {
         color_mapper.max_temp()
     );
 
-    // Main monitoring loop
-    let poll_interval = Duration::from_millis(config.monitoring.poll_interval_ms);
+    // Main monitoring loop.
+    //
+    // Polling is hardened so tt-qb-lights can never amplify a chip fault into a
+    // whole-box lockup: reads run off-thread with a timeout (AsyncPoller), can
+    // never pile up, and the loop backs off / holds last-good on trouble
+    // (PollController). See docs/superpowers/specs/2026-07-14-harden-poll-path.md.
+    let policy = PollPolicy {
+        base_interval: Duration::from_millis(config.monitoring.poll_interval_ms),
+        max_interval: Duration::from_millis(config.monitoring.max_poll_interval_ms),
+        read_timeout: Duration::from_millis(config.monitoring.read_timeout_ms),
+        backoff_multiplier: config.monitoring.backoff_multiplier,
+        sentinel_temp_c: config.monitoring.sentinel_temp_c,
+        sentinel_power_w: config.monitoring.sentinel_power_w,
+        fault_dim_after: Duration::from_millis(config.monitoring.fault_dim_after_ms),
+        fault_brightness: config.monitoring.fault_brightness,
+    };
+    let read_timeout = policy.read_timeout;
+    let mut poller = AsyncPoller::new(Arc::clone(&monitor));
+    let mut controller = PollController::new(policy);
+
+    let start = Instant::now();
     let mut loop_count = 0u64;
     let mut last_log_time = Instant::now();
     let mut last_rgb_color: Option<(rgb::RgbColor, f32)> = None; // Track last color sent
     let mut last_rgb_update = Instant::now(); // Track last RGB update time
     let min_rgb_update_interval = Duration::from_secs(5); // Minimum 5 seconds between updates
+    let mut faulted = false; // for one-shot fault/recovery logging
 
     info!("Starting main monitoring loop (Ctrl+C to stop)");
 
     loop {
         let loop_start = Instant::now();
 
-        // Poll hardware metrics
-        match monitor.poll_metrics() {
-            Ok(metrics) => {
-                loop_count += 1;
+        // Poll off-thread with a timeout; never blocks the loop, never piles up.
+        let outcome = poller.poll_once(read_timeout).await;
+        let now = start.elapsed();
 
-                // Find hottest device
-                let hottest = metrics
-                    .iter()
-                    .max_by(|a, b| a.max_temp.partial_cmp(&b.max_temp).unwrap())
-                    .unwrap();
-
-                // Calculate color based on temperature
-                let color = color_mapper.map_temperature(hottest.max_temp);
-
-                // Calculate brightness based on power utilization
-                let brightness = if config.effects.enable_power_brightness {
-                    config.effects.min_brightness
-                        + (config.effects.max_brightness - config.effects.min_brightness)
-                            * hottest.power_utilization
+        // Classify the outcome into a PollResult for the controller.
+        let result = match outcome {
+            PollOutcome::Good(metrics) => {
+                let all_plausible = metrics.iter().all(|m| {
+                    m.is_plausible(
+                        config.monitoring.sentinel_temp_c,
+                        config.monitoring.sentinel_power_w,
+                    )
+                });
+                if !all_plausible {
+                    // Sentinel telemetry (e.g. 65536 °C / 4294 W) never drives color.
+                    PollResult::Sentinel
                 } else {
-                    config.effects.max_brightness
-                };
+                    loop_count += 1;
 
-                // Apply pulsing effect if overheating
-                let final_brightness = if config.effects.enable_warning_pulse
-                    && hottest.max_temp >= config.effects.warning_temp_threshold
-                {
-                    // Pulse between 50% and 100% of calculated brightness
-                    let pulse_phase = (loop_count as f32 * 0.1).sin() * 0.5 + 0.5;
-                    brightness * (0.5 + pulse_phase * 0.5)
-                } else {
-                    brightness
-                };
+                    // Find hottest device.
+                    let hottest = metrics
+                        .iter()
+                        .max_by(|a, b| a.max_temp.partial_cmp(&b.max_temp).unwrap())
+                        .unwrap();
 
-                // Update RGB lights only if:
-                // 1. Color/brightness changed significantly AND
-                // 2. Enough time has passed since last update (prevent flickering)
-                let color_changed = if let Some((last_color, last_brightness)) = last_rgb_color {
-                    // Check if color changed by at least 5 units in any channel
-                    // or brightness changed by more than 5%
-                    (color.r as i16 - last_color.r as i16).abs() > 5
-                        || (color.g as i16 - last_color.g as i16).abs() > 5
-                        || (color.b as i16 - last_color.b as i16).abs() > 5
-                        || (final_brightness - last_brightness).abs() > 0.05
-                } else {
-                    true // First update
-                };
+                    // Color from temperature.
+                    let color = color_mapper.map_temperature(hottest.max_temp);
 
-                let enough_time_passed = last_rgb_update.elapsed() >= min_rgb_update_interval;
-                let should_update = color_changed && enough_time_passed;
+                    // Brightness from power utilization.
+                    let brightness = if config.effects.enable_power_brightness {
+                        config.effects.min_brightness
+                            + (config.effects.max_brightness - config.effects.min_brightness)
+                                * hottest.power_utilization
+                    } else {
+                        config.effects.max_brightness
+                    };
 
-                if should_update {
-                    if let Some(controller) = rgb_controller.as_mut() {
-                        match config.openrgb.zone_strategy {
-                            config::ZoneStrategy::Unified => {
-                                // All zones show the same color
-                                if let Err(e) = controller.set_all(color, final_brightness) {
-                                    error!("Failed to update RGB lights: {}", e);
-                                } else {
-                                    last_rgb_color = Some((color, final_brightness));
-                                    last_rgb_update = Instant::now();
-                                    info!("Updated RGB to #{:02X}{:02X}{:02X} @ {:.0}%",
-                                        color.r, color.g, color.b, final_brightness * 100.0);
-                                }
-                            }
-                            config::ZoneStrategy::PerDevice => {
-                                // TODO: Implement per-device zone mapping
-                                warn_once!("Per-device zone strategy not yet implemented, using unified");
-                                if let Err(e) = controller.set_all(color, final_brightness) {
-                                    error!("Failed to update RGB lights: {}", e);
-                                } else {
-                                    last_rgb_color = Some((color, final_brightness));
-                                    last_rgb_update = Instant::now();
-                                }
-                            }
-                            config::ZoneStrategy::Gradient => {
-                                // TODO: Implement gradient across all LEDs
-                                warn_once!("Gradient zone strategy not yet implemented, using unified");
-                                if let Err(e) = controller.set_all(color, final_brightness) {
-                                    error!("Failed to update RGB lights: {}", e);
-                                } else {
-                                    last_rgb_color = Some((color, final_brightness));
-                                    last_rgb_update = Instant::now();
-                                }
-                            }
-                        }
+                    // Pulse when overheating.
+                    let final_brightness = if config.effects.enable_warning_pulse
+                        && hottest.max_temp >= config.effects.warning_temp_threshold
+                    {
+                        let pulse_phase = (loop_count as f32 * 0.1).sin() * 0.5 + 0.5;
+                        brightness * (0.5 + pulse_phase * 0.5)
+                    } else {
+                        brightness
+                    };
+
+                    // Periodic status logging (every 10 seconds).
+                    if last_log_time.elapsed() >= Duration::from_secs(10) {
+                        info!(
+                            "Status: {:.1}°C (max) | {:.1}W | RGB: #{:02X}{:02X}{:02X} @ {:.0}%",
+                            hottest.max_temp,
+                            hottest.power_watts,
+                            color.r,
+                            color.g,
+                            color.b,
+                            final_brightness * 100.0
+                        );
+                        last_log_time = Instant::now();
                     }
-                }
 
-                // Periodic status logging (every 10 seconds)
-                if last_log_time.elapsed() >= Duration::from_secs(10) {
-                    info!(
-                        "Status: {:.1}°C (max) | {:.1}W | RGB: #{:02X}{:02X}{:02X} @ {:.0}%",
-                        hottest.max_temp,
-                        hottest.power_watts,
-                        color.r,
-                        color.g,
-                        color.b,
-                        final_brightness * 100.0
-                    );
-                    last_log_time = Instant::now();
+                    PollResult::Good(Display {
+                        color,
+                        brightness: final_brightness,
+                    })
                 }
             }
-            Err(e) => {
-                error!("Failed to poll metrics: {}", e);
-                // Continue loop despite error (might be transient)
+            PollOutcome::Error => PollResult::Error,
+            PollOutcome::Timeout => PollResult::Timeout,
+        };
+
+        // One-shot fault/recovery logging (rate-limited by state change).
+        let is_trouble = !matches!(result, PollResult::Good(_));
+        if is_trouble && !faulted {
+            warn!("Telemetry degraded (slow/errored/sentinel) — backing off polling, holding last-good lights");
+            faulted = true;
+        } else if !is_trouble && faulted {
+            info!("Telemetry recovered — resuming normal polling");
+            faulted = false;
+        }
+
+        // Ask the controller what to display and push it to the LEDs, keeping
+        // the existing anti-flicker throttle (color changed + min interval).
+        if let Some(display) = controller.record(result, now) {
+            let color = display.color;
+            let final_brightness = display.brightness;
+
+            let color_changed = if let Some((last_color, last_brightness)) = last_rgb_color {
+                (color.r as i16 - last_color.r as i16).abs() > 5
+                    || (color.g as i16 - last_color.g as i16).abs() > 5
+                    || (color.b as i16 - last_color.b as i16).abs() > 5
+                    || (final_brightness - last_brightness).abs() > 0.05
+            } else {
+                true // First update
+            };
+
+            if color_changed && last_rgb_update.elapsed() >= min_rgb_update_interval {
+                if let Some(controller_rgb) = rgb_controller.as_mut() {
+                    // All zone strategies currently render unified (per-device /
+                    // gradient remain TODO).
+                    if !matches!(config.openrgb.zone_strategy, config::ZoneStrategy::Unified) {
+                        warn_once!("Only unified zone strategy is implemented; using unified");
+                    }
+                    if let Err(e) = controller_rgb.set_all(color, final_brightness) {
+                        error!("Failed to update RGB lights: {}", e);
+                    } else {
+                        last_rgb_color = Some((color, final_brightness));
+                        last_rgb_update = Instant::now();
+                        info!(
+                            "Updated RGB to #{:02X}{:02X}{:02X} @ {:.0}%",
+                            color.r, color.g, color.b, final_brightness * 100.0
+                        );
+                    }
+                }
             }
         }
 
-        // Sleep until next poll interval or handle Ctrl+C
+        // Sleep the controller's (possibly backed-off) interval, minus time
+        // already spent this iteration; wake early on Ctrl+C.
         let elapsed = loop_start.elapsed();
-        let sleep_duration = if elapsed < poll_interval {
-            poll_interval - elapsed
-        } else {
-            warn!("Loop took longer than poll interval: {:?}", elapsed);
-            Duration::from_millis(10) // Tiny sleep to avoid busy loop
-        };
+        let interval = controller.interval();
+        let sleep_duration = interval.saturating_sub(elapsed).max(Duration::from_millis(10));
 
         tokio::select! {
             _ = tokio::time::sleep(sleep_duration) => {
